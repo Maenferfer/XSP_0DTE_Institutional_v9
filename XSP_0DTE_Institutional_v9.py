@@ -23,8 +23,6 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 # ================================================================
 # TELEGRAM — BUG #4 CORREGIDO
 # ================================================================
-import requests
-import streamlit as st
 
 def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
