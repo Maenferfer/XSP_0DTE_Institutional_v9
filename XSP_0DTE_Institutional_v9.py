@@ -297,7 +297,7 @@ def main():
     
     # Llamamos a la función pasando el mensaje construido
                 enviar_telegram(msg_tel)
-                    st.toast("¡Enviado!")
+                st.toast("¡Enviado!")
     
 if __name__ == "__main__":
     main()
