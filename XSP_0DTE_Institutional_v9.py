@@ -168,7 +168,7 @@ def main():
     
     # Sidebar para inputs que antes eran consola
     cap = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
-    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=0.0)
+    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=250.0)
     MAX_LOSS_DIA = -300.0
 
     if st.button('EJECUTAR ANÁLISIS'):
