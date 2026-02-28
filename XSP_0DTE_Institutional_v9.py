@@ -24,21 +24,17 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 # TELEGRAM — BUG #4 CORREGIDO
 # ================================================================
 
-def enviar_telegram(texto_mensaje):
+def enviar_telegram(msg_tel):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org{token}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
     
     try:
-        # CORRECCIÓN: Usar 'texto_mensaje' que es el parámetro de la función
-        payload = {"chat_id": chat_id, "text": texto_mensaje}
-        r = requests.post(url, data=payload, timeout=10)
-        if r.status_code == 200:
-            st.success("✅ ¡Alerta enviada a Telegram!")
-        else:
-            st.error(f"Error de Telegram: {r.text}")
+        # Enviamos el mensaje que genera el botón
+        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
     except Exception as e:
         st.error(f"Error al conectar con Telegram: {e}")
+        
 # ================================================================
 # NOTICIAS — BUG #1 CORREGIDO
 # ================================================================
@@ -289,26 +285,19 @@ def main():
 
             # Notificación Telegram (simulada al dar click o programada)
             
-# --- DISPLAY DASHBOARD ---
-      st.header(f"XSP 0DTE v9.0 | {ahora.strftime('%H:%M:%S')}")
-# ... (tus métricas col1, col2, etc.)
-
-    if lotes == 0:
-        st.error(f"🚫 NO OPERAR: {motivo_bloqueo if 'motivo_bloqueo' in locals() else 'Condiciones insuficientes'}")
-    else:
-        estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-    if iron_condor:
-        st.success(f"💎 ESTRATEGIA: {estrategia_txt} | LOTES: {lotes}")
-        # ... (tus textos de Iron Condor)
-        msg_tel = f"XSP v9.0 — {estrategia_txt}\nCALL: {vender_call}/{comprar_call}\nPUT: {vender}/{comprar_put}\nLOTES: {lotes}"
-    else:
-        st.success(f"🔥 ESTRATEGIA: {estrategia_txt}")
-        st.write(f"**VENDER:** {vender} | **COMPRAR:** {comprar} | **LOTES:** {lotes}")
-        msg_tel = f"XSP v9.0 — {estrategia_txt}\nVENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\nLOTES: {lotes} | VIX: {d['vix']:.1f}"
-
-# BOTÓN DE ENVÍO (Ahora funciona porque los datos están definidos)
-    if st.button("🚀 ENVIAR ALERTA A TELEGRAM"):
-        enviar_telegram(msg_tel)
+            if st.button("Enviar alerta a Telegram ahora"):
+                estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+    
+    # Aquí se construye el mensaje con los datos reales de tu ejecución
+                msg_tel = (
+                    f"XSP v9.0 — {estrategia_txt}\n"
+                    f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
+                    f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
+                )
+    
+    # Llamamos a la función pasando el mensaje construido
+                enviar_telegram(msg_tel)
+                st.toast("¡Enviado!")
     
 if __name__ == "__main__":
     main()
