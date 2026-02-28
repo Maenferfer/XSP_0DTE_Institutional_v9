@@ -30,7 +30,7 @@ import streamlit as st
 def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org{token}/sendMessage" # Agregado /bot
+    url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
     
     try:
         # Enviamos el mensaje que genera el botón
