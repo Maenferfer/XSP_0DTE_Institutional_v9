@@ -290,19 +290,27 @@ def main():
 
             # Notificación Telegram (simulada al dar click o programada)
             
-            if st.button("Enviar alerta a Telegram ahora"):
+
+            # --- DISPLAY DASHBOARD ---
+            st.header(f"XSP 0DTE v9.0 | {ahora.strftime('%H:%M:%S')}")
+            # ... (tus métricas col1, col2, etc.)
+
+            if lotes == 0:
+                st.error(f"🚫 NO OPERAR: {motivo_bloqueo if 'motivo_bloqueo' in locals() else 'Condiciones insuficientes'}")
+            else:
                 estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-    
-    # Aquí se construye el mensaje con los datos reales de tu ejecución
-                msg_tel = (
-                    f"XSP v9.0 — {estrategia_txt}\n"
-                    f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
-                    f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
-                )
-    
-    # Llamamos a la función pasando el mensaje construido
-                enviar_telegram(msg_tel)
-                st.toast("¡Enviado!")
+                if iron_condor:
+                    st.success(f"💎 ESTRATEGIA: {estrategia_txt} | LOTES: {lotes}")
+                    # ... (tus textos de Iron Condor)
+                    msg_tel = f"XSP v9.0 — {estrategia_txt}\nCALL: {vender_call}/{comprar_call}\nPUT: {vender}/{comprar_put}\nLOTES: {lotes}"
+                else:
+                    st.success(f"🔥 ESTRATEGIA: {estrategia_txt}")
+                    st.write(f"**VENDER:** {vender} | **COMPRAR:** {comprar} | **LOTES:** {lotes}")
+                    msg_tel = f"XSP v9.0 — {estrategia_txt}\nVENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\nLOTES: {lotes} | VIX: {d['vix']:.1f}"
+
+                # BOTÓN DE ENVÍO (Ahora funciona porque los datos están definidos)
+                if st.button("🚀 ENVIAR ALERTA A TELEGRAM"):
+                    enviar_telegram(msg_tel)
     
 if __name__ == "__main__":
     main()
