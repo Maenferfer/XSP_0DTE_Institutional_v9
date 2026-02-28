@@ -21,26 +21,30 @@ FINNHUB_API_KEY = 'd6d2nn1r01qgk7mkblh0d6d2nn1r01qgk7mkblhg'
 st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 
 # ================================================================
-# TELEGRAM — BUG #4 CORREGIDO
+# TELEGRAM — CORREGIDO PARA STREAMLIT
 # ================================================================
-
 def enviar_telegram(msg_tel):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
+    url = f"https://api.telegram.org{token}/sendMessage"
     
     try:
-        # Enviamos el mensaje que genera el botón
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
+        # Se usa 'msg_tel' que es el argumento que recibe la función
+        r = requests.post(url, data={"chat_id": chat_id, "text": msg_tel}, timeout=10)
+        if r.status_code == 200:
+            st.sidebar.success("✅ Alerta enviada a Telegram")
+        else:
+            st.sidebar.error(f"❌ Error API Telegram: {r.text}")
     except Exception as e:
-        st.error(f"Error al conectar con Telegram: {e}")
-        
+        st.sidebar.error(f"❌ Error de conexión Telegram: {e}")
+
 # ================================================================
-# NOTICIAS — BUG #1 CORREGIDO
+# NOTICIAS — URL CORREGIDA
 # ================================================================
 def check_noticias_pro(api_key):
     eventos_prohibidos = ["CPI", "FED", "FOMC", "NFP", "POWELL", "PPI", "INTEREST RATE", "JOBLESS", "TARIFF", "TRADE WAR", "RETAIL SALES", "EARNINGS"]
     hoy = str(date.today())
+    # URL Completa corregida
     url = f"https://finnhub.io{hoy}&to={hoy}&token={api_key}"
     estado = {"bloqueo": False, "eventos": []}
     try:
@@ -59,7 +63,7 @@ def check_noticias_pro(api_key):
     return estado
 
 # ================================================================
-# STREAK DE DÍAS CONSECUTIVOS
+# FUNCIONES DE CÁLCULO
 # ================================================================
 def calcular_streak_dias(df_diario):
     closes = df_diario['Close'].tail(10).values
@@ -73,9 +77,6 @@ def calcular_streak_dias(df_diario):
             break
     return streak
 
-# ================================================================
-# DATOS MAESTROS — MEJORA: VIX3M añadido
-# ================================================================
 def obtener_datos_maestros():
     vals = {}
     try:
@@ -151,9 +152,6 @@ def obtener_datos_maestros():
         return None
     return vals
 
-# ================================================================
-# FUNCIÓN AUXILIAR: Delta teórico
-# ================================================================
 def calcular_delta_prob(precio, strike, vix, dias_exp=1):
     T = dias_exp / 252
     sigma = vix / 100
@@ -166,13 +164,13 @@ def calcular_delta_prob(precio, strike, vix, dias_exp=1):
 # MAIN STREAMLIT
 # ================================================================
 def main():
-    st.title("🛡️ XSP 0DTE Institutional v9.0 — Definitivo")
-    st.markdown("---")
+    st.title("🛡️ XSP 0DTE Institutional v9.0")
     
-    # Sidebar para inputs que antes eran consola
+    # Sidebar
     cap = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
-    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=250.0)
+    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=0.0)
     MAX_LOSS_DIA = -300.0
+    enviar_auto = st.sidebar.checkbox("Enviar Telegram automáticamente", value=True)
 
     if st.button('EJECUTAR ANÁLISIS'):
         with st.spinner('Obteniendo datos maestros...'):
@@ -186,118 +184,65 @@ def main():
             ahora = datetime.now(ZONA_HORARIA)
             ahora_time = ahora.time()
             mercado_asentado = ahora_time >= time(16, 45)
-            hora_limite = time(20, 45)
-            minutos_al_limite = max(0, (datetime.combine(date.today(), hora_limite) - datetime.combine(date.today(), ahora_time)).total_seconds() / 60)
 
-            # --- FILTROS DE RÉGIMEN ---
+            # --- FILTROS Y BIAS ---
             vix_extremo = d["vix"] > 35
             backwardation = d["vix"] > d["vix3m"]
-            vix_inv = d["vix"] < d["vix9d"]
             vix_peligro = d["vix"] > d["vix9d"]
-            pico_bonos = d["tnx"] > d["tnx_prev"] * 1.02
-            vix_panico = d["vix_speed"] > 3.5
-            agotamiento = (d["actual"] > d["apertura"]) and (d["vol_rel"] < 0.6)
-            extendido = abs(d["actual"] - d["apertura"]) > d["std_dev"] * 2.5
+            precio_sobre_vwap = d["actual"] > d["vwap"]
             gap_grande_arr = d["gap_pct"] > 0.5
             gap_grande_abj = d["gap_pct"] < -0.5
-            streak_bajista = d["streak"] <= -3
-            streak_alcista = d["streak"] >= 3
-            divergencia_bonos = (d["tnx"] > d["tnx_prev"]) and (d["actual"] > d["apertura"])
-            precio_sobre_vwap = d["actual"] > d["vwap"]
-            skew_ok_ic = d["skew"] < 125
-            iron_condor = (d["vix"] < 18 and d["inside_day"] and abs(d["streak"]) < 2 and 1 <= d["votos_tech"] <= 2 and skew_ok_ic)
+            iron_condor = (d["vix"] < 18 and d["inside_day"] and abs(d["streak"]) < 2 and 1 <= d["votos_tech"] <= 2 and d["skew"] < 125)
 
-            # --- BIAS ---
-            bias = (d["actual"] > d["prev"] and d["votos_tech"] >= 2 and d["rsp_bull"] and not vix_peligro and not noticias["bloqueo"] and not divergencia_bonos and precio_sobre_vwap)
+            bias = (d["actual"] > d["prev"] and d["votos_tech"] >= 2 and d["rsp_bull"] and not vix_peligro and not noticias["bloqueo"] and precio_sobre_vwap)
             
-            if d["z_score"] > 2.2:
-                bias = False
-                st.warning("PATRÓN: Agotamiento alcista extremo (Z > 2.2) → Bear Call forzado")
-            if d["z_score"] < -2.2:
-                bias = True
-                st.warning("PATRÓN: Pánico excesivo (Z < -2.2) → Bull Put forzado")
+            if d["z_score"] > 2.2: bias = False
+            elif d["z_score"] < -2.2: bias = True
             if gap_grande_arr and not iron_condor: bias = False
             if gap_grande_abj and not iron_condor: bias = True
 
-            # --- CÁLCULO STRIKE ---
+            # --- STRIKE Y LOTES ---
             m_seg = 0.85 if d["vix"] < 15 else (1.05 if d["vix"] < 22 else 1.35)
-            m_horario = 0.92 if ahora_time >= time(16, 45) else 1.0
-            dist_atr = d["atr14"] * 0.90 * m_horario
-            dist_sigma = d["actual"] * ((d["vix"] / 100) / (252**0.5)) * m_seg
-            dist = max(dist_atr, dist_sigma)
+            dist = max(d["atr14"] * 0.90, d["actual"] * ((d["vix"] / 100) / (252**0.5)) * m_seg)
             vender = round(d["actual"] - dist) if bias else round(d["actual"] + dist)
             if vender % 5 == 0: vender = vender - 1 if bias else vender + 1
             
             prob_itm = calcular_delta_prob(d["actual"], vender, d["vix"])
-            if prob_itm > 0.20:
-                vender = vender - 2 if bias else vender + 2
-                prob_itm = calcular_delta_prob(d["actual"], vender, d["vix"])
             distancia_seguridad = abs(d["actual"] - vender)
 
-            # --- GESTIÓN LOTES ---
             lotes_base = max(1, int((cap / 25000) * 10))
-            if vix_extremo or backwardation or pico_bonos or vix_panico:
+            if vix_extremo or backwardation or d["vix_speed"] > 3.5:
                 lotes = 0
-                motivo_bloqueo = "VIX EXTREMO / BACKWARDATION / BONOS"
+                motivo_bloqueo = "Pánico/VIX Extremo"
             else:
-                if d["vix"] < 18: lotes = int(lotes_base * 1.5)
-                elif d["vix"] < 25: lotes = lotes_base
-                else: lotes = max(1, lotes_base // 2)
-                if distancia_seguridad > 5 and d["vix"] < 20: lotes = max(lotes, 15)
-                if d["inside_day"] and not vix_peligro and lotes > 0:
-                    lotes = int(lotes * 1.2)
-                    st.info("OPORTUNIDAD: Inside Day detectado. Lotes +20%.")
+                lotes = int(lotes_base * 1.5) if d["vix"] < 18 else (lotes_base if d["vix"] < 25 else lotes_base // 2)
             
-            if pnl_dia <= MAX_LOSS_DIA:
-                lotes = 0
-                st.error(f"LÍMITE DIARIO ALCANZADO: P&L día = {pnl_dia:.0f}€. No operar.")
-
-            # --- SPREAD ---
-            if iron_condor:
-                ancho = 2
-                vender_call = round(d["actual"] + dist)
-                comprar_call = vender_call + ancho
-                comprar_put = vender - ancho
-            else:
-                ancho = 2 if d["vix"] < 18 else (3 if d["vix"] < 25 else 5)
-                comprar = vender - ancho if bias else vender + ancho
+            if pnl_dia <= MAX_LOSS_DIA: lotes = 0
 
             # --- DISPLAY DASHBOARD ---
-            st.header(f"XSP 0DTE v9.0 | {ahora.strftime('%H:%M:%S')}")
+            st.header(f"Dashboard | {ahora.strftime('%H:%M:%S')}")
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("XSP Precio", f"{d['actual']:.2f}")
             col2.metric("VWAP", f"{d['vwap']:.2f}", "SOBRE" if precio_sobre_vwap else "BAJO")
-            col3.metric("VIX", f"{d['vix']:.2f}", "¡PELIGRO!" if vix_extremo else "")
+            col3.metric("VIX", f"{d['vix']:.2f}")
             col4.metric("Z-Score", f"{d['z_score']:.2f}")
 
-            st.write("---")
-            if lotes == 0:
-                st.error(f"🚫 NO OPERAR: {motivo_bloqueo if 'motivo_bloqueo' in locals() else 'Condiciones insuficientes'}")
-            else:
-                if iron_condor:
-                    st.success(f"💎 ESTRATEGIA: IRON CONDOR | LOTES: {lotes}")
-                    st.write(f"**BULL PUT:** Vender {vender} / Comprar {comprar_put}")
-                    st.write(f"**BEAR CALL:** Vender {vender_call} / Comprar {comprar_call}")
-                else:
-                    st.success(f"🔥 ESTRATEGIA: {'BULL PUT' if bias else 'BEAR CALL'}")
-                    st.write(f"**VENDER:** {vender} | **COMPRAR:** {comprar} | **LOTES:** {lotes}")
-                    st.write(f"Distancia: {distancia_seguridad:.2f} | Prob ITM: {prob_itm*100:.1f}%")
-
-            # Notificación Telegram (simulada al dar click o programada)
-            
-            if st.button("Enviar alerta a Telegram ahora"):
+            if lotes > 0:
                 estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-    
-    # Aquí se construye el mensaje con los datos reales de tu ejecución
-                msg_tel = (
-                    f"XSP v9.0 — {estrategia_txt}\n"
-                    f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
-                    f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
-                )
-    
-    # Llamamos a la función pasando el mensaje construido
-                enviar_telegram(msg_tel)
-                st.toast("¡Enviado!")
-    
+                st.success(f"🔥 ESTRATEGIA: {estrategia_txt} | VENDER: {vender} | LOTES: {lotes}")
+                
+                # --- ENVÍO A TELEGRAM AUTOMÁTICO ---
+                if enviar_auto:
+                    msg_tel = (
+                        f"🚀 XSP v9.0 — {estrategia_txt}\n"
+                        f"🔹 VENDER: {vender}\n"
+                        f"🔹 PROB ITM: {prob_itm*100:.1f}%\n"
+                        f"🔹 LOTES: {lotes}\n"
+                        f"🔹 VIX: {d['vix']:.1f} | Z: {d['z_score']:.2f}"
+                    )
+                    enviar_telegram(msg_tel)
+            else:
+                st.error("🚫 NO OPERAR: Condiciones de riesgo detectadas.")
+
 if __name__ == "__main__":
     main()
