@@ -29,12 +29,10 @@ def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
     try:
-        # Enviamos el mensaje que genera el botón
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
-    except Exception as e:
-        st.error(f"Error al conectar con Telegram: {e}")
+        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=5)
+    except:
+        pass
 
 
 # ================================================================
