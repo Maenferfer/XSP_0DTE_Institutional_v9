@@ -26,33 +26,14 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 import requests
 import streamlit as st
 
-# 1. Asegúrate de que la función tenga la URL corregida con "/bot"
 def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
-    
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     try:
-        # Enviamos el mensaje que genera el botón
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
-    except Exception as e:
-        st.error(f"Error al conectar con Telegram: {e}")
-
-# 2. Tu lógica del botón (donde se genera el 'msg_tel' dinámico)
-if st.button("Enviar alerta a Telegram ahora"):
-    estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-    
-    # Aquí se construye el mensaje con los datos reales de tu ejecución
-    msg_tel = (
-        f"XSP v9.0 — {estrategia_txt}\n"
-        f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
-        f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
-    )
-    
-    # Llamamos a la función pasando el mensaje construido
-    enviar_telegram(msg_tel)
-    st.toast("¡Enviado!")
-
+        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=5)
+    except:
+        pass
 # ================================================================
 # NOTICIAS — BUG #1 CORREGIDO
 # ================================================================
