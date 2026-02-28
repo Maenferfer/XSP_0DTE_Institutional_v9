@@ -23,14 +23,22 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 # ================================================================
 # TELEGRAM — BUG #4 CORREGIDO
 # ================================================================
+import requests
+
 def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
+    
     try:
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=5)
-    except:
-        pass
+        response = requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
+        # Esto imprimirá el error real de Telegram si algo sale mal
+        print(f"Respuesta del servidor: {response.json()}") 
+    except Exception as e:
+        print(f"Error de conexión o código: {e}")
+
+enviar_telegram("Prueba de mensaje")
+
 
 # ================================================================
 # NOTICIAS — BUG #1 CORREGIDO
