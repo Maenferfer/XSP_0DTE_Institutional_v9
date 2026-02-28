@@ -282,6 +282,10 @@ def main():
 
             # Notificación Telegram (simulada al dar click o programada)
             
-
+            if st.button("Enviar alerta a Telegram ahora"):
+                estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+                msg_tel = f"XSP v9.0 — {estrategia_txt}\nVENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\nLOTES: {lotes} | VIX: {d['vix']:.1f}"
+                enviar_telegram(msg_tel)
+                st.toast("Enviado!") tengo este código al final del script
 if __name__ == "__main__":
     main()
