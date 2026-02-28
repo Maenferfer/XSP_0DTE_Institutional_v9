@@ -168,9 +168,9 @@ def main():
     
     # Sidebar
     cap = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
-    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=0.0)
+    pnl_dia = st.sidebar.number_input("P&L del día (€)", value=250.0)
     MAX_LOSS_DIA = -300.0
-    enviar_auto = st.sidebar.checkbox("Enviar Telegram automáticamente", value=True)
+    enviar_auto = st.sidebar.checkbox("Enviar Telegram automáticamente", value=False)
 
     if st.button('EJECUTAR ANÁLISIS'):
         with st.spinner('Obteniendo datos maestros...'):
