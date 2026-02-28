@@ -289,15 +289,15 @@ def main():
                 estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
     
     # Aquí se construye el mensaje con los datos reales de tu ejecución
-    msg_tel = (
-        f"XSP v9.0 — {estrategia_txt}\n"
-        f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
-        f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
-    )
+                msg_tel = (
+                    f"XSP v9.0 — {estrategia_txt}\n"
+                    f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
+                    f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
+                )
     
     # Llamamos a la función pasando el mensaje construido
-    enviar_telegram(msg_tel)
-    st.toast("¡Enviado!")
+                enviar_telegram(msg_tel)
+                st.toast("¡Enviado!")
     
 if __name__ == "__main__":
     main()
