@@ -290,13 +290,13 @@ def main():
             # Notificación Telegram (simulada al dar click o programada)
             
 # --- DISPLAY DASHBOARD ---
-st.header(f"XSP 0DTE v9.0 | {ahora.strftime('%H:%M:%S')}")
+      st.header(f"XSP 0DTE v9.0 | {ahora.strftime('%H:%M:%S')}")
 # ... (tus métricas col1, col2, etc.)
 
-if lotes == 0:
-    st.error(f"🚫 NO OPERAR: {motivo_bloqueo if 'motivo_bloqueo' in locals() else 'Condiciones insuficientes'}")
-else:
-    estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+    if lotes == 0:
+        st.error(f"🚫 NO OPERAR: {motivo_bloqueo if 'motivo_bloqueo' in locals() else 'Condiciones insuficientes'}")
+    else:
+        estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
     if iron_condor:
         st.success(f"💎 ESTRATEGIA: {estrategia_txt} | LOTES: {lotes}")
         # ... (tus textos de Iron Condor)
