@@ -26,7 +26,7 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 def enviar_telegram(msg_tel):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org{token}/sendMessage"
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
     
     try:
         # Se usa 'msg_tel' que es el argumento que recibe la función
