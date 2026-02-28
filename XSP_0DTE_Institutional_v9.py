@@ -286,7 +286,7 @@ def main():
             # Notificación Telegram (simulada al dar click o programada)
             
             if st.button("Enviar alerta a Telegram ahora"):
-    estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+                estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
     
     # Aquí se construye el mensaje con los datos reales de tu ejecución
     msg_tel = (
