@@ -24,14 +24,19 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 # TELEGRAM — BUG #4 CORREGIDO
 # ================================================================
 
-def enviar_telegram(msg_tel):
+def enviar_telegram(texto_mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
+    url = f"https://api.telegram.org{token}/sendMessage"
     
     try:
-        # Enviamos el mensaje que genera el botón
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
+        # CORRECCIÓN: Usar 'texto_mensaje' que es el parámetro de la función
+        payload = {"chat_id": chat_id, "text": texto_mensaje}
+        r = requests.post(url, data=payload, timeout=10)
+        if r.status_code == 200:
+            st.success("✅ ¡Alerta enviada a Telegram!")
+        else:
+            st.error(f"Error de Telegram: {r.text}")
     except Exception as e:
         st.error(f"Error al conectar con Telegram: {e}")
         
