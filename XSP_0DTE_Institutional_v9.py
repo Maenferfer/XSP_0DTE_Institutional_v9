@@ -24,7 +24,7 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 # TELEGRAM — BUG #4 CORREGIDO
 # ================================================================
 
-def enviar_telegram(mensaje):
+def enviar_telegram(msg_tel):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
     url = f"https://api.telegram.org/bot{token}/sendMessage" # Agregado /bot
@@ -296,7 +296,7 @@ def main():
                 )
     
     # Llamamos a la función pasando el mensaje construido
-                enviar_telegram(mensaje)
+                enviar_telegram(msg_tel)
                 st.toast("¡Enviado!")
     
 if __name__ == "__main__":
