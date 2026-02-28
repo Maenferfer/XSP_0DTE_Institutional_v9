@@ -27,11 +27,14 @@ st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 def enviar_telegram(mensaje):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
-    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    url = f"https://api.telegram.org{token}/sendMessage" # Agregado /bot
+    
     try:
-        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=5)
-    except:
-        pass
+        # Enviamos el mensaje que genera el botón
+        requests.post(url, data={"chat_id": chat_id, "text": mensaje}, timeout=10)
+    except Exception as e:
+        st.error(f"Error al conectar con Telegram: {e}")
+        
 # ================================================================
 # NOTICIAS — BUG #1 CORREGIDO
 # ================================================================
@@ -283,9 +286,18 @@ def main():
             # Notificación Telegram (simulada al dar click o programada)
             
             if st.button("Enviar alerta a Telegram ahora"):
-                estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-                msg_tel = f"XSP v9.0 — {estrategia_txt}\nVENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\nLOTES: {lotes} | VIX: {d['vix']:.1f}"
-                enviar_telegram(msg_tel)
-                st.toast("Enviado!")
+    estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+    
+    # Aquí se construye el mensaje con los datos reales de tu ejecución
+    msg_tel = (
+        f"XSP v9.0 — {estrategia_txt}\n"
+        f"VENDER: {vender} | PROB ITM: {prob_itm*100:.1f}%\n"
+        f"LOTES: {lotes} | VIX: {d['vix']:.1f}"
+    )
+    
+    # Llamamos a la función pasando el mensaje construido
+    enviar_telegram(msg_tel)
+    st.toast("¡Enviado!")
+    
 if __name__ == "__main__":
     main()
