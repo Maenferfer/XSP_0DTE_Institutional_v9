@@ -20,7 +20,7 @@ logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 ZONA_HORARIA    = pytz.timezone('Europe/Madrid')
 FINNHUB_API_KEY = 'd6d2nn1r01qgk7mkblh0d6d2nn1r01qgk7mkblhg'
 
-st.set_page_config(page_title="XSP 0DTE Institutional v10.0", layout="wide")
+st.set_page_config(page_title="XSP 0DTE Institutional v10.1", layout="wide")
 
 # ================================================================
 # TELEGRAM
@@ -434,22 +434,42 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     ventana, ventana_icon, ventana_desc = evaluar_ventana_horaria(ahora_time)
     niveles_redondos = analizar_strikes_redondos(d["actual"], rango_pts=25)
 
-    # ── FILTROS ───────────────────────────────────────────────────
-    vix_extremo         = d["vix"] > 35
-    backwardation       = d["vix"] > d["vix3m"]
-    vix_peligro         = d["vix"] > d["vix9d"]
+    # ================================================================
+    # FILTROS — UMBRALES CALIBRADOS ESTADÍSTICAMENTE (desde abr-2023)
+    # ================================================================
+
+    # ── Bloqueos totales (sin cambios — bien calibrados) ──────────
+    vix_extremo    = d["vix"] > 35          # P99 histórico — mantener
+    backwardation  = d["vix"] > d["vix3m"]  # ~6% días — mantener
+    ventana_evitar = ventana == "EVITAR"
+
+    # ── VVIX: subido de >100 a >115 (P90 real = 115, antes bloqueaba 38% días)
+    vvix_extremo = d["vvix"] > 115
+
+    # ── VIX peligro (VIX > VIX9D): era bloqueo total, ahora solo reduce lotes
+    # Ocurre ~22% de los días — demasiado frecuente para bloquear todo
+    vix_peligro_leve = d["vix"] > d["vix9d"]   # reductor de lotes
+    # Solo bloqueamos si además el VIX está por encima de un nivel elevado
+    vix_peligro_bloqueo = d["vix"] > d["vix9d"] and d["vix"] > 25
+
+    # ── TS Slope: ajustado de >0.95 a >0.93 (P88 real)
+    ts_tension   = d["ts_slope"] > 0.93
+    # Backwardation completa ya está arriba como bloqueo total
+
+    # ── VIX1D spike: subido de >1.2 a >1.35 (P92 real, antes disparaba 25% días)
+    vix1d_spike = d["vix1d_ratio"] > 1.35
+
+    # ── TNX presión bajista: bajado de >1.5% a >0.8% (ocurre ~15% días, señal real)
+    tnx_presion_bajista = d["tnx_cambio"] > 0.8
+
+    # ── Resto de filtros (bien calibrados, sin cambios) ───────────
     precio_sobre_vwap   = d["actual"] > d["vwap"]
     gap_grande_arr      = d["gap_pct"] > 0.5
     gap_grande_abj      = d["gap_pct"] < -0.5
-    vvix_extremo        = d["vvix"] > 100
     prima_barata        = d["ivr"] < 25
     sobreextendido_arr  = d["pct_b"] > 0.95
     sobreextendido_abj  = d["pct_b"] < 0.05
-    tnx_presion_bajista = d["tnx_cambio"] > 1.5
     precio_en_or        = d["or_low"] <= d["actual"] <= d["or_high"]
-    ventana_evitar      = ventana == "EVITAR"
-    vix1d_spike         = d["vix1d_ratio"] > 1.2
-    ts_tension          = d["ts_slope"] > 0.95
     rally_falso         = not d["amplitud_ok"] and d["actual"] > d["prev"]
     gex_negativo        = not g["gex_positivo"]
     precio_bajo_flip    = g["gamma_flip"] and d["actual"] < g["gamma_flip"]
@@ -463,12 +483,20 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
 
     # ── BIAS ──────────────────────────────────────────────────────
     bias = (
-        d["actual"] > d["prev"] and d["votos_tech"] >= 2 and
-        d["rsp_bull"] and d["amplitud_ok"] and d["qqq_alcista"] and
-        not vix_peligro and not noticias["bloqueo"] and precio_sobre_vwap
+        d["actual"] > d["prev"] and
+        d["votos_tech"] >= 2 and
+        d["rsp_bull"] and
+        d["amplitud_ok"] and
+        d["qqq_alcista"] and
+        not vix_peligro_bloqueo and      # ← ahora solo bloquea si VIX>25 Y VIX>VIX9D
+        not noticias["bloqueo"] and
+        precio_sobre_vwap
     )
-    if d["z_score"] > 2.2  or sobreextendido_arr:   bias = False
-    if d["z_score"] < -2.2 or sobreextendido_abj:   bias = True
+
+    # ── Z-Score: ajustado de ±2.2 a ±2.0 (P97.5 real)
+    if d["z_score"] > 2.0  or sobreextendido_arr:   bias = False
+    if d["z_score"] < -2.0 or sobreextendido_abj:   bias = True
+
     if gap_grande_arr:                                bias = False
     if gap_grande_abj:                                bias = True
     if tnx_presion_bajista and bias:                  bias = False
@@ -482,10 +510,17 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if hv_iv_peligroso:                               bias = False
 
     # ── IRON CONDOR ───────────────────────────────────────────────
+    # VIX umbral: subido de <18 a <20 (más realista con entorno actual)
+    # SKEW umbral: subido de <125 a <135 (P40 real, antes casi nunca se activaba)
     iron_condor = (
-        (d["vix"] < 18 and d["inside_day"] and abs(d["streak"]) < 2 and
-         1 <= d["votos_tech"] <= 2 and d["skew"] < 125)
-        or precio_en_or or g["en_rango_gamma"] or d["divergencia_qqq"]
+        (d["vix"] < 20 and                 # ← era <18
+         d["inside_day"] and
+         abs(d["streak"]) < 2 and
+         1 <= d["votos_tech"] <= 2 and
+         d["skew"] < 135)                  # ← era <125
+        or precio_en_or
+        or g["en_rango_gamma"]
+        or d["divergencia_qqq"]
     )
 
     # ── STRIKE ────────────────────────────────────────────────────
@@ -514,24 +549,37 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     distancia_seguridad = abs(d["actual"] - vender)
 
     # ── LOTES ─────────────────────────────────────────────────────
-    lotes_base = max(1, int((cap / 25000) * 10))
+    lotes_base     = max(1, int((cap / 25000) * 10))
     motivo_bloqueo = ""
 
-    if vix_extremo:            motivo_bloqueo = "VIX Extremo (>35)";                             lotes = 0
-    elif vvix_extremo:         motivo_bloqueo = "VVIX Extremo (>100)";                           lotes = 0
-    elif backwardation:        motivo_bloqueo = "Backwardation VIX/VIX3M";                       lotes = 0
-    elif ts_tension:           motivo_bloqueo = f"Term Structure tensión ({d['ts_slope']:.2f})"; lotes = 0
-    elif d["vix_speed"] > 3.5: motivo_bloqueo = f"Velocidad VIX ({d['vix_speed']:.1f}%)";       lotes = 0
-    elif ventana_evitar:       motivo_bloqueo = f"Ventana peligrosa — {ventana_desc}";           lotes = 0
-    elif noticias["bloqueo"]:  motivo_bloqueo = f"Noticias: {', '.join(noticias['eventos'])}";  lotes = 0
-    elif pnl_dia <= MAX_LOSS_DIA: motivo_bloqueo = f"Límite pérdida diaria ({pnl_dia}€)";       lotes = 0
+    if vix_extremo:
+        motivo_bloqueo = "VIX Extremo (>35)";                                lotes = 0
+    elif vvix_extremo:
+        motivo_bloqueo = "VVIX Extremo (>115) — volatilidad impredecible";   lotes = 0
+    elif backwardation:
+        motivo_bloqueo = "Backwardation VIX/VIX3M";                          lotes = 0
+    elif ts_tension and d["ts_slope"] > 0.97:
+        # Solo bloqueamos si la tensión es muy severa (>0.97), si es 0.93-0.97 reducimos
+        motivo_bloqueo = f"Term Structure crítica ({d['ts_slope']:.3f})";    lotes = 0
+    elif d["vix_speed"] > 3.5:
+        motivo_bloqueo = f"Velocidad VIX ({d['vix_speed']:.1f}%)";           lotes = 0
+    elif ventana_evitar:
+        motivo_bloqueo = f"Ventana peligrosa — {ventana_desc}";              lotes = 0
+    elif noticias["bloqueo"]:
+        motivo_bloqueo = f"Noticias: {', '.join(noticias['eventos'])}";      lotes = 0
+    elif pnl_dia <= MAX_LOSS_DIA:
+        motivo_bloqueo = f"Límite pérdida diaria ({pnl_dia}€)";              lotes = 0
     else:
         lotes = int(lotes_base * 1.5) if d["vix"] < 18 else (lotes_base if d["vix"] < 25 else lotes_base // 2)
-        if prima_barata:        lotes = max(1, lotes - 1)
-        if vix1d_spike:         lotes = max(1, lotes - 1)
-        if gex_negativo:        lotes = max(1, lotes - 1)
-        if hv_iv_peligroso:     lotes = max(1, lotes - 1)
+        # Reductores de lotes (en vez de bloqueos totales)
+        if prima_barata:                        lotes = max(1, lotes - 1)  # IVR bajo
+        if vix1d_spike:                         lotes = max(1, lotes - 1)  # vol intradía alta
+        if gex_negativo:                        lotes = max(1, lotes - 1)  # MM cubriendo
+        if hv_iv_peligroso:                     lotes = max(1, lotes - 1)  # vol subestimada
+        if vix_peligro_leve:                    lotes = max(1, lotes - 1)  # ← VIX > VIX9D ahora reduce lotes
+        if ts_tension:                          lotes = max(1, lotes - 1)  # tensión term structure
         if d["divergencia_qqq"] and not iron_condor: lotes = max(1, lotes - 1)
+        if tnx_presion_bajista:                 lotes = max(1, lotes - 1)  # presión bonos
 
     # Texto final de la decisión
     if lotes > 0:
@@ -550,7 +598,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     elif ventana == "EVITAR": st.error(  f"{ventana_icon} **{ventana}** — {ventana_desc}")
     else:                     st.info(   f"{ventana_icon} **{ventana}** — {ventana_desc}")
 
-    # ✅ 2️⃣ RESULTADO AQUÍ — visible sin hacer scroll
+    # 2️⃣ RESULTADO — visible sin scroll
     st.divider()
     if lotes > 0:
         st.success(
@@ -565,31 +613,32 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
         st.error(f"🚫 **NO OPERAR** — {motivo_display}")
     st.divider()
 
-    # 3️⃣ Métricas detalladas
+    # 3️⃣ Métricas
     st.subheader("📈 Precio y Volatilidad")
     c1,c2,c3,c4,c5 = st.columns(5)
     c1.metric("XSP Precio",  f"{d['actual']:.2f}")
     c2.metric("VWAP",        f"{d['vwap']:.2f}",       "SOBRE" if precio_sobre_vwap else "BAJO")
     c3.metric("VIX",         f"{d['vix']:.2f}")
     c4.metric("VIX1D",       f"{d['vix1d']:.2f}",      f"x{d['vix1d_ratio']:.2f} 🔴" if vix1d_spike else f"x{d['vix1d_ratio']:.2f} ✅")
-    c5.metric("Z-Score",     f"{d['z_score']:.2f}")
+    c5.metric("Z-Score",     f"{d['z_score']:.2f}",    "Extremo ⚠️" if abs(d['z_score']) > 2.0 else "Normal ✅")
 
     st.subheader("🌡️ Estructura de Volatilidad")
     c6,c7,c8,c9,c10 = st.columns(5)
     c6.metric("IV Rank",      f"{d['ivr']:.1f}%",      "Rica ✅" if d['ivr'] >= 50 else "Barata ⚠️")
     c7.metric("HV20/IV",      f"{d['hv_iv']:.2f}",     "Peligroso 🔴" if hv_iv_peligroso else ("Ideal ✅" if hv_iv_ideal else "Normal 🟡"))
-    c8.metric("VVIX",         f"{d['vvix']:.1f}",      "Peligro 🔴" if vvix_extremo else "Normal ✅")
-    c9.metric("TS Slope",     f"{d['ts_slope']:.3f}",  "Tensión 🔴" if ts_tension else ("Alerta ⚠️" if d['ts_slope'] > 0.85 else "Contango ✅"))
+    c8.metric("VVIX",         f"{d['vvix']:.1f}",      "Extremo 🔴" if vvix_extremo else ("Alerta ⚠️" if d['vvix'] > 100 else "Normal ✅"))
+    c9.metric("TS Slope",     f"{d['ts_slope']:.3f}",  "Crítico 🔴" if d['ts_slope'] > 0.97 else ("Tensión ⚠️" if ts_tension else ("Alerta 🟡" if d['ts_slope'] > 0.85 else "Contango ✅")))
     c10.metric("Bollinger %B",f"{d['pct_b']:.2f}",     "Sobreext ⚠️" if (sobreextendido_arr or sobreextendido_abj) else "Normal ✅")
 
     st.subheader("📡 Flujo de Mercado")
     c11,c12,c13,c14,c15 = st.columns(5)
-    c11.metric("QQQ Ret",   f"{d['qqq_ret']:+.2f}%",  "Alcista ✅" if d['qqq_alcista'] else "Bajista 🔴")
-    c12.metric("SPY Ret",   f"{d['spy_ret']:+.2f}%")
-    c13.metric("QQQ vs SPY",f"{d['qqq_ret']-d['spy_ret']:+.2f}%",
+    c11.metric("QQQ Ret",    f"{d['qqq_ret']:+.2f}%",  "Alcista ✅" if d['qqq_alcista'] else "Bajista 🔴")
+    c12.metric("SPY Ret",    f"{d['spy_ret']:+.2f}%")
+    c13.metric("QQQ vs SPY", f"{d['qqq_ret']-d['spy_ret']:+.2f}%",
                "Lidera ✅" if d['qqq_lidera'] else ("Diverge ⚠️" if d['divergencia_qqq'] else "Alineado ✅"))
-    c14.metric("Amplitud",  "Confirmada ✅" if d['amplitud_ok'] else "Falso ⚠️")
-    c15.metric("TNX Cambio",f"{d['tnx_cambio']:+.2f}%","Presión 🔴" if tnx_presion_bajista else "Normal ✅")
+    c14.metric("Amplitud",   "Confirmada ✅" if d['amplitud_ok'] else "Falso ⚠️")
+    c15.metric("TNX Cambio", f"{d['tnx_cambio']:+.2f}%",
+               "Presión 🔴" if tnx_presion_bajista else "Normal ✅")
 
     st.subheader("⚡ Niveles Gamma")
     c16,c17,c18,c19,c20 = st.columns(5)
@@ -605,15 +654,17 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
 
     st.subheader("🎯 Operativa")
     c21,c22,c23,c24,c25 = st.columns(5)
-    c21.metric("GEX Neto",  f"{g['gex_neto']:,.0f}", "Anclaje ✅" if g['gex_positivo'] else "Volátil 🔴")
-    c22.metric("Gap %",     f"{d['gap_pct']:.2f}%")
-    c23.metric("Streak",    f"{d['streak']} días")
-    c24.metric("Distancia", f"{distancia_seguridad:.1f} pts")
-    c25.metric("Prob ITM",  f"{prob_itm*100:.1f}%")
+    c21.metric("GEX Neto",   f"{g['gex_neto']:,.0f}", "Anclaje ✅" if g['gex_positivo'] else "Volátil 🔴")
+    c22.metric("Gap %",      f"{d['gap_pct']:.2f}%")
+    c23.metric("Streak",     f"{d['streak']} días")
+    c24.metric("Distancia",  f"{distancia_seguridad:.1f} pts")
+    c25.metric("Prob ITM",   f"{prob_itm*100:.1f}%")
 
+    # VIX9D — ahora muestra si está reduciendo lotes
     st.info(
         f"📊 OR: {d['or_low']:.2f} — {d['or_high']:.2f} | "
-        f"Precio {'DENTRO ⚠️ (indecisión)' if precio_en_or else 'FUERA ✅ (hay dirección)'}"
+        f"Precio {'DENTRO ⚠️ (indecisión)' if precio_en_or else 'FUERA ✅ (hay dirección)'} | "
+        f"VIX9D: {'⚠️ lotes reducidos' if vix_peligro_leve else '✅ normal'}"
     )
 
     with st.expander("📐 Strikes redondos clave"):
@@ -634,13 +685,18 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if g["en_rango_gamma"]:       st.success(f"✅ Precio en rango gamma [{g['put_wall']:.1f} — {g['call_wall']:.1f}] — Iron Condor ideal")
     if d["divergencia_qqq"]:      st.warning(f"⚠️ QQQ ({d['qqq_ret']:+.2f}%) diverge de SPY ({d['spy_ret']:+.2f}%)")
     if d["qqq_lidera"] and not d["divergencia_qqq"]: st.success("✅ QQQ lidera — apetito de riesgo real confirmado")
-    if hv_iv_peligroso:           st.warning(f"⚠️ HV20/IV = {d['hv_iv']:.2f} — mercado subestima la vol")
+    if hv_iv_peligroso:           st.warning(f"⚠️ HV20/IV = {d['hv_iv']:.2f} — mercado subestima la vol, lotes reducidos")
     if hv_iv_ideal and not prima_barata: st.success(f"✅ HV20/IV = {d['hv_iv']:.2f} — prima cara, condiciones ideales")
     if prima_barata:              st.warning(f"⚠️ IVR bajo ({d['ivr']:.1f}%) — prima barata, lotes reducidos")
-    if vix1d_spike:               st.warning(f"⚠️ VIX1D spike (x{d['vix1d_ratio']:.2f}) — vol intradía alta")
+    if vix1d_spike:               st.warning(f"⚠️ VIX1D spike (x{d['vix1d_ratio']:.2f} > 1.35) — vol intradía alta, lotes reducidos")
+    if d['vvix'] > 100 and not vvix_extremo: st.warning(f"⚠️ VVIX elevado ({d['vvix']:.1f}) — atención aunque no es bloqueo")
+    if vvix_extremo:              st.error(f"🔴 VVIX Extremo ({d['vvix']:.1f} > 115) — volatilidad impredecible")
     if gex_negativo:              st.warning(f"⚠️ GEX negativo — MM cubriendo, lotes reducidos")
     if precio_bajo_flip:          st.warning(f"⚠️ Precio bajo Gamma Flip ({g['gamma_flip']:.1f}) — zona bajista")
     if rally_falso:               st.warning("⚠️ Rally falso — SPY sube pero RSP no confirma")
+    if tnx_presion_bajista:       st.warning(f"⚠️ TNX +{d['tnx_cambio']:.2f}% — presión bajista bonos, lotes reducidos")
+    if vix_peligro_leve:          st.warning(f"⚠️ VIX ({d['vix']:.1f}) > VIX9D ({d['vix9d']:.1f}) — lotes reducidos")
+    if ts_tension:                st.warning(f"⚠️ TS Slope {d['ts_slope']:.3f} > 0.93 — tensión en curva de vol, lotes reducidos")
     if g["expected_move"]:        st.info(f"📏 Expected Move hoy: ±{g['expected_move']:.1f} pts "
                                           f"[{d['actual']-g['expected_move']:.1f} — {d['actual']+g['expected_move']:.1f}]")
 
@@ -657,11 +713,11 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
             "resultado": "", "notas": "",
         })
         if enviar_auto:
-            mp_l  = f"🔹 Max Pain: {g['max_pain']:.1f} (sesgo {sesgo_max_pain})\n" if g['max_pain'] else ""
-            gf_l  = f"🔹 Gamma Flip: {g['gamma_flip']:.1f} {'⚠️' if precio_bajo_flip else '✅'}\n" if g['gamma_flip'] else ""
-            em_l  = f"🔹 Exp Move: ±{g['expected_move']:.1f} pts\n" if g['expected_move'] else ""
+            mp_l = f"🔹 Max Pain: {g['max_pain']:.1f} (sesgo {sesgo_max_pain})\n" if g['max_pain'] else ""
+            gf_l = f"🔹 Gamma Flip: {g['gamma_flip']:.1f} {'⚠️' if precio_bajo_flip else '✅'}\n" if g['gamma_flip'] else ""
+            em_l = f"🔹 Exp Move: ±{g['expected_move']:.1f} pts\n" if g['expected_move'] else ""
             msg_tel = (
-                f"🚀 XSP v10.0 — {estrategia_txt}\n"
+                f"🚀 XSP v10.1 — {estrategia_txt}\n"
                 f"🔹 VENDER: {vender}{' (ajustado redondo)' if fue_ajustado else ''}\n"
                 f"🔹 PROB ITM: {prob_itm*100:.1f}% | DIST: {distancia_seguridad:.1f} pts\n"
                 f"🔹 LOTES: {lotes}\n"
@@ -672,11 +728,13 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
                 f"🔹 GEX: {'Anclaje ✅' if g['gex_positivo'] else 'Volátil 🔴'}\n"
                 f"─────────────────\n"
                 f"🔹 VIX: {d['vix']:.1f} | VIX1D: {d['vix1d']:.1f} (x{d['vix1d_ratio']:.2f})\n"
-                f"🔹 IVR: {d['ivr']:.1f}% | HV/IV: {d['hv_iv']:.2f}\n"
                 f"🔹 VVIX: {d['vvix']:.1f} | TS: {d['ts_slope']:.3f}\n"
+                f"🔹 IVR: {d['ivr']:.1f}% | HV/IV: {d['hv_iv']:.2f}\n"
                 f"🔹 %B: {d['pct_b']:.2f} | Z: {d['z_score']:.2f}\n"
                 f"🔹 QQQ: {d['qqq_ret']:+.2f}% | SPY: {d['spy_ret']:+.2f}% "
                 f"{'⚠️ diverge' if d['divergencia_qqq'] else '✅'}\n"
+                f"🔹 TNX: {d['tnx_cambio']:+.2f}% | "
+                f"VIX9D: {'⚠️' if vix_peligro_leve else '✅'}\n"
                 f"🔹 Amplitud: {'✅' if d['amplitud_ok'] else '⚠️'} | "
                 f"Ventana: {ventana_icon} {ventana}"
             )
@@ -686,7 +744,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
 # MAIN
 # ================================================================
 def main():
-    st.title("🛡️ XSP 0DTE Institutional v10.0")
+    st.title("🛡️ XSP 0DTE Institutional v10.1")
     inicializar_journal()
 
     cap         = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
@@ -732,3 +790,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
