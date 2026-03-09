@@ -566,7 +566,33 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
         )
     else:
         st.error(f"🚫 **NO OPERAR** — {motivo_display}")
-        st.caption(f"* Si se operara ahora: **{señal_teorica}** — el riesgo no justifica la operación")
+        vender_teorico     = round(d["actual"] - dist_base) if bias_teorico else round(d["actual"] + dist_base)
+        vender_teorico, _  = ajustar_strike_redondo(vender_teorico, bias_teorico)
+        prob_teorica       = calcular_delta_prob(d["actual"], vender_teorico, vix_para_dist)
+        dist_teorica       = abs(d["actual"] - vender_teorico)
+        lotes_teoricos     = max(1, int(lotes_base * 1.5) if d["vix"] < 18 else (lotes_base if d["vix"] < 25 else lotes_base // 2))
+        if señal_teorica == "IRON CONDOR":
+            vender_put_teo  = round(d["actual"] - dist_base)
+            vender_call_teo = round(d["actual"] + dist_base)
+            vender_put_teo,  _ = ajustar_strike_redondo(vender_put_teo,  True)
+            vender_call_teo, _ = ajustar_strike_redondo(vender_call_teo, False)
+            prob_put_teo  = calcular_delta_prob(d["actual"], vender_put_teo,  vix_para_dist)
+            prob_call_teo = calcular_delta_prob(d["actual"], vender_call_teo, vix_para_dist)
+            st.caption(
+                f"* Si se operara ahora: **{señal_teorica}** | "
+                f"PUT: **{vender_put_teo}** (ITM {prob_put_teo*100:.1f}%) | "
+                f"CALL: **{vender_call_teo}** (ITM {prob_call_teo*100:.1f}%) | "
+                f"Dist: ±{dist_teorica:.1f} pts | "
+                f"Lotes: **{lotes_teoricos}** — ⚠️ el riesgo no justifica la operación"
+            )
+        else:
+            st.caption(
+                f"* Si se operara ahora: **{señal_teorica}** | "
+                f"Strike: **{vender_teorico}** | "
+                f"Prob ITM: {prob_teorica*100:.1f}% | "
+                f"Dist: {dist_teorica:.1f} pts | "
+                f"Lotes: **{lotes_teoricos}** — ⚠️ el riesgo no justifica la operación"
+            )
     st.divider()
 
     # 3️⃣ Métricas
