@@ -21,15 +21,13 @@ FINNHUB_API_KEY = 'd6d2nn1r01qgk7mkblh0d6d2nn1r01qgk7mkblhg'
 st.set_page_config(page_title="XSP 0DTE Institutional v9.0", layout="wide")
 
 # ================================================================
-# TELEGRAM — CORREGIDO PARA STREAMLIT
+# TELEGRAM
 # ================================================================
 def enviar_telegram(msg_tel):
     token = "8730360984:AAGJCvvnQKbZJFnAIQnfnC4bmrq1lCk9MEo"
     chat_id = "7121107501"
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    
     try:
-        # Se usa 'msg_tel' que es el argumento que recibe la función
         r = requests.post(url, data={"chat_id": chat_id, "text": msg_tel}, timeout=10)
         if r.status_code == 200:
             st.sidebar.success("✅ Alerta enviada a Telegram")
@@ -39,13 +37,12 @@ def enviar_telegram(msg_tel):
         st.sidebar.error(f"❌ Error de conexión Telegram: {e}")
 
 # ================================================================
-# NOTICIAS — URL CORREGIDA
+# NOTICIAS
 # ================================================================
 def check_noticias_pro(api_key):
     eventos_prohibidos = ["CPI", "FED", "FOMC", "NFP", "POWELL", "PPI", "INTEREST RATE", "JOBLESS", "TARIFF", "TRADE WAR", "RETAIL SALES", "EARNINGS"]
     hoy = str(date.today())
-    # URL Completa corregida
-    url = f"https://finnhub.io{hoy}&to={hoy}&token={api_key}"
+    url = f"https://finnhub.io/api/v1/calendar/economic?from={hoy}&to={hoy}&token={api_key}"
     estado = {"bloqueo": False, "eventos": []}
     try:
         r = requests.get(url, timeout=5).json().get('economicCalendar', [])
@@ -87,7 +84,7 @@ def obtener_datos_maestros():
             df = t.history(period="7d", interval="1m")
             if df.empty: df = t.history(period="7d", interval="1d")
             raw_data[k] = df
-        
+
         df_x = raw_data["XSP"] if not raw_data["XSP"].empty else raw_data["SPY"]
         factor = 10 if raw_data["XSP"].empty else 1
         actual = float(df_x['Close'].iloc[-1]) * factor
@@ -107,23 +104,37 @@ def obtener_datos_maestros():
         df_diario = yf.Ticker("^XSP").history(period="30d", interval="1d")
         if df_diario.empty: df_diario = yf.Ticker("SPY").history(period="30d", interval="1d")
         df_diario = df_diario * factor if raw_data["XSP"].empty else df_diario
-        
+
         atr14 = (df_diario['High'] - df_diario['Low']).tail(14).mean()
         streak = calcular_streak_dias(df_diario)
         cierre_diario = df_diario['Close']
         std_20 = cierre_diario.tail(20).std()
         z_score = (cierre_diario.iloc[-1] - cierre_diario.tail(20).mean()) / std_20 if std_20 > 0 else 0
-        
+
         inside_day = (len(df_diario) >= 2 and df_diario['High'].iloc[-1] < df_diario['High'].iloc[-2] and df_diario['Low'].iloc[-1] > df_diario['Low'].iloc[-2])
 
-        if len(df_x) > 30:
-            typical = (df_x['High'] + df_x['Low'] + df_x['Close']) / 3
-            vwap = (typical * df_x['Volume']).cumsum() / df_x['Volume'].cumsum()
-            vwap_actual = float(vwap.iloc[-1]) * factor
-        else: vwap_actual = actual
+        # ============================================================
+        # VWAP CORREGIDO — solo barras del día actual, protege /0
+        # ============================================================
+        vwap_actual = actual  # valor por defecto
+        try:
+            tz_df = df_x.index.tz
+            hoy_date = pd.Timestamp.now(tz=tz_df).date()
+            df_hoy = df_x[df_x.index.date == hoy_date]
+
+            if len(df_hoy) > 5:
+                typical = (df_hoy['High'] + df_hoy['Low'] + df_hoy['Close']) / 3
+                cum_vol = df_hoy['Volume'].cumsum().replace(0, np.nan)
+                vwap_series = (typical * df_hoy['Volume']).cumsum() / cum_vol
+                vwap_val = vwap_series.dropna().iloc[-1] if not vwap_series.dropna().empty else actual
+                vwap_actual = float(vwap_val) * factor
+        except Exception as e_vwap:
+            st.warning(f"⚠️ VWAP calculado con fallback: {e_vwap}")
+            vwap_actual = actual
+        # ============================================================
 
         vix3m = float(raw_data["VIX3M"]['Close'].iloc[-1]) if not raw_data["VIX3M"].empty else 20.0
-        
+
         vals = {
             "actual": actual, "apertura": apertura, "prev": prev_close,
             "ma5": df_x['Close'].tail(5).mean() * factor,
@@ -165,7 +176,7 @@ def calcular_delta_prob(precio, strike, vix, dias_exp=1):
 # ================================================================
 def main():
     st.title("🛡️ XSP 0DTE Institutional v9.0")
-    
+
     # Sidebar
     cap = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
     pnl_dia = st.sidebar.number_input("P&L del día (€)", value=250.0)
@@ -176,7 +187,7 @@ def main():
         with st.spinner('Obteniendo datos maestros...'):
             noticias = check_noticias_pro(FINNHUB_API_KEY)
             d = obtener_datos_maestros()
-            
+
             if not d:
                 st.error("No se pudieron obtener los datos.")
                 return
@@ -195,7 +206,7 @@ def main():
             iron_condor = (d["vix"] < 18 and d["inside_day"] and abs(d["streak"]) < 2 and 1 <= d["votos_tech"] <= 2 and d["skew"] < 125)
 
             bias = (d["actual"] > d["prev"] and d["votos_tech"] >= 2 and d["rsp_bull"] and not vix_peligro and not noticias["bloqueo"] and precio_sobre_vwap)
-            
+
             if d["z_score"] > 2.2: bias = False
             elif d["z_score"] < -2.2: bias = True
             if gap_grande_arr and not iron_condor: bias = False
@@ -206,7 +217,7 @@ def main():
             dist = max(d["atr14"] * 0.90, d["actual"] * ((d["vix"] / 100) / (252**0.5)) * m_seg)
             vender = round(d["actual"] - dist) if bias else round(d["actual"] + dist)
             if vender % 5 == 0: vender = vender - 1 if bias else vender + 1
-            
+
             prob_itm = calcular_delta_prob(d["actual"], vender, d["vix"])
             distancia_seguridad = abs(d["actual"] - vender)
 
@@ -216,7 +227,7 @@ def main():
                 motivo_bloqueo = "Pánico/VIX Extremo"
             else:
                 lotes = int(lotes_base * 1.5) if d["vix"] < 18 else (lotes_base if d["vix"] < 25 else lotes_base // 2)
-            
+
             if pnl_dia <= MAX_LOSS_DIA: lotes = 0
 
             # --- DISPLAY DASHBOARD ---
@@ -230,8 +241,7 @@ def main():
             if lotes > 0:
                 estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
                 st.success(f"🔥 ESTRATEGIA: {estrategia_txt} | VENDER: {vender} | LOTES: {lotes}")
-                
-                # --- ENVÍO A TELEGRAM AUTOMÁTICO ---
+
                 if enviar_auto:
                     msg_tel = (
                         f"🚀 XSP v9.0 — {estrategia_txt}\n"
