@@ -9,14 +9,12 @@ import pytz
 import warnings
 import logging
 
-# pip install streamlit-autorefresh
 try:
     from streamlit_autorefresh import st_autorefresh
     AUTOREFRESH_DISPONIBLE = True
 except ImportError:
     AUTOREFRESH_DISPONIBLE = False
 
-# --- CONFIGURACIÓN ---
 warnings.filterwarnings("ignore")
 logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 ZONA_HORARIA    = pytz.timezone('Europe/Madrid')
@@ -131,21 +129,18 @@ def calcular_niveles_gamma(precio_actual, factor=1):
 
         precio_spy = precio_actual / factor
 
-        # ── CALL WALL ────────────────────────────────────────────────
         calls_otm = calls[calls['strike'] > precio_spy]
         if not calls_otm.empty:
             cw = float(calls_otm.loc[calls_otm['openInterest'].idxmax(), 'strike'])
             resultado["call_wall"]         = round(cw * factor, 2)
             resultado["call_wall_redondo"] = es_strike_redondo(int(cw * factor))
 
-        # ── PUT WALL ─────────────────────────────────────────────────
         puts_otm = puts[puts['strike'] < precio_spy]
         if not puts_otm.empty:
             pw = float(puts_otm.loc[puts_otm['openInterest'].idxmax(), 'strike'])
             resultado["put_wall"]         = round(pw * factor, 2)
             resultado["put_wall_redondo"] = es_strike_redondo(int(pw * factor))
 
-        # ── GEX ──────────────────────────────────────────────────────
         calls_g = calls[['strike', 'openInterest']].copy(); calls_g['gex'] =  calls_g['openInterest']
         puts_g  = puts[['strike',  'openInterest']].copy(); puts_g['gex']  = -puts_g['openInterest']
         gex_by_s = pd.concat([calls_g[['strike','gex']], puts_g[['strike','gex']]]) \
@@ -154,16 +149,11 @@ def calcular_niveles_gamma(precio_actual, factor=1):
         resultado["gex_neto"]     = float(gex_by_s[rango_m].sum())
         resultado["gex_positivo"] = resultado["gex_neto"] >= 0
 
-        # ── GAMMA FLIP ───────────────────────────────────────────────
         gex_cum = gex_by_s.cumsum()
-        signos  = np.sign(gex_cum.values)
-        cruces  = np.where(np.diff(signos))[0]
-        if len(cruces) > 0:
-            resultado["gamma_flip"] = round(float(gex_by_s.index[cruces[0]]) * factor, 2)
-        else:
-            resultado["gamma_flip"] = precio_actual
+        cruces  = np.where(np.diff(np.sign(gex_cum.values)))[0]
+        resultado["gamma_flip"] = round(float(gex_by_s.index[cruces[0]]) * factor, 2) \
+                                  if len(cruces) > 0 else precio_actual
 
-        # ── MAX PAIN ─────────────────────────────────────────────────
         strikes_all = np.union1d(calls['strike'].values, puts['strike'].values)
         pains = []
         for s in strikes_all:
@@ -175,17 +165,15 @@ def calcular_niveles_gamma(precio_actual, factor=1):
         if pains:
             resultado["max_pain"] = round(float(strikes_all[int(np.argmin(pains))]) * factor, 2)
 
-        # ── EXPECTED MOVE (straddle ATM) ─────────────────────────────
         try:
             atm_calls = calls[abs(calls['strike'] - precio_spy) <= 2].nsmallest(1, 'strike')
             atm_puts  = puts[abs(puts['strike']   - precio_spy) <= 2].nlargest(1,  'strike')
             if not atm_calls.empty and not atm_puts.empty:
-                em_spy = float(atm_calls['lastPrice'].iloc[0]) + float(atm_puts['lastPrice'].iloc[0])
-                resultado["expected_move"] = round(em_spy * factor, 2)
-        except:
-            pass
+                resultado["expected_move"] = round(
+                    (float(atm_calls['lastPrice'].iloc[0]) +
+                     float(atm_puts['lastPrice'].iloc[0])) * factor, 2)
+        except: pass
 
-        # ── EN RANGO GAMMA ───────────────────────────────────────────
         if resultado["put_wall"] and resultado["call_wall"]:
             resultado["en_rango_gamma"] = resultado["put_wall"] <= precio_actual <= resultado["call_wall"]
 
@@ -227,7 +215,6 @@ def obtener_datos_maestros():
         factor = 10 if raw_data["XSP"].empty else 1
         actual = float(df_x['Close'].iloc[-1]) * factor
 
-        # ── Diario ────────────────────────────────────────────────────
         df_diario = yf.Ticker("^XSP").history(period="30d", interval="1d")
         if df_diario.empty:
             df_diario = yf.Ticker("SPY").history(period="30d", interval="1d")
@@ -251,8 +238,7 @@ def obtener_datos_maestros():
 
         cierre_diario = df_diario['Close']
         std_20  = cierre_diario.tail(20).std()
-        z_score = (cierre_diario.iloc[-1] - cierre_diario.tail(20).mean()) / std_20 \
-                  if std_20 > 0 else 0
+        z_score = (cierre_diario.iloc[-1] - cierre_diario.tail(20).mean()) / std_20 if std_20 > 0 else 0
 
         inside_day = (
             len(df_diario) >= 2 and
@@ -260,12 +246,10 @@ def obtener_datos_maestros():
             df_diario['Low'].iloc[-1]  > df_diario['Low'].iloc[-2]
         )
 
-        # ── HV/IV ─────────────────────────────────────────────────────
         hv20    = cierre_diario.pct_change().tail(20).std() * np.sqrt(252) * 100
         vix_ref = float(raw_data["VIX"]['Close'].iloc[-1])
         hv_iv   = hv20 / vix_ref if vix_ref > 0 else 1.0
 
-        # ── VWAP + Opening Range ──────────────────────────────────────
         vwap_actual = actual
         or_high     = actual + 1
         or_low      = actual - 1
@@ -285,10 +269,8 @@ def obtener_datos_maestros():
                     if not df_or.empty:
                         or_high = float(df_or['High'].max()) * factor
                         or_low  = float(df_or['Low'].min())  * factor
-        except Exception as e_vwap:
-            st.warning(f"⚠️ VWAP/OR fallback: {e_vwap}")
+        except: pass
 
-        # ── IV Rank ───────────────────────────────────────────────────
         ivr = 50.0
         try:
             vix_hist = yf.Ticker("^VIX").history(period="252d", interval="1d")['Close']
@@ -296,25 +278,21 @@ def obtener_datos_maestros():
                 ivr = (vix_ref - vix_hist.min()) / (vix_hist.max() - vix_hist.min()) * 100
         except: pass
 
-        # ── Bollinger %B ──────────────────────────────────────────────
         pct_b = 0.5
         try:
             ma20  = cierre_diario.tail(20).mean()
             std20 = cierre_diario.tail(20).std()
-            bb_u  = ma20 + 2 * std20
-            bb_l  = ma20 - 2 * std20
+            bb_u  = ma20 + 2 * std20; bb_l = ma20 - 2 * std20
             if (bb_u - bb_l) > 0:
                 pct_b = (cierre_diario.iloc[-1] - bb_l) / (bb_u - bb_l)
         except: pass
 
-        # ── VVIX ──────────────────────────────────────────────────────
         vvix = 90.0
         try:
             if not raw_data["VVIX"].empty:
                 vvix = float(raw_data["VVIX"]['Close'].iloc[-1])
         except: pass
 
-        # ── VIX1D ─────────────────────────────────────────────────────
         vix1d = vix_ref
         try:
             if not raw_data["VIX1D"].empty:
@@ -322,16 +300,13 @@ def obtener_datos_maestros():
         except: pass
         vix1d_ratio = vix1d / vix_ref if vix_ref > 0 else 1.0
 
-        # ── TNX ───────────────────────────────────────────────────────
         tnx_val      = float(raw_data["TNX"]['Close'].iloc[-1]) if not raw_data["TNX"].empty else 4.0
         tnx_prev_val = float(raw_data["TNX"]['Close'].iloc[-2]) if len(raw_data["TNX"]) > 1 else tnx_val
         tnx_cambio   = ((tnx_val - tnx_prev_val) / tnx_prev_val) * 100 if tnx_prev_val > 0 else 0
 
-        # ── Term Structure ────────────────────────────────────────────
         vix3m    = float(raw_data["VIX3M"]['Close'].iloc[-1]) if not raw_data["VIX3M"].empty else 20.0
         ts_slope = vix_ref / vix3m if vix3m > 0 else 1.0
 
-        # ── QQQ ───────────────────────────────────────────────────────
         qqq_ret = 0.0; spy_ret_val = 0.0
         qqq_lidera = False; divergencia_qqq = False; qqq_alcista = False
         try:
@@ -346,13 +321,11 @@ def obtener_datos_maestros():
                 qqq_lidera = qqq_ret > spy_ret_val + 0.3
         except: pass
 
-        # ── Amplitud ──────────────────────────────────────────────────
         spy_up = (not raw_data["SPY"].empty and
                   float(raw_data["SPY"]['Close'].iloc[-1]) > float(raw_data["SPY"]['Open'].iloc[-1]))
         rsp_up = (not raw_data["RSP"].empty and
                   float(raw_data["RSP"]['Close'].iloc[-1]) > float(raw_data["RSP"]['Open'].iloc[-1]))
 
-        # ── Tech votes ───────────────────────────────────────────────
         votos = 0
         for tk in ["AAPL", "MSFT", "NVDA"]:
             d_tk = yf.Ticker(tk).history(period="1d", interval="1m")
@@ -383,7 +356,6 @@ def obtener_datos_maestros():
             "caida_flash": (actual / (float(df_x['Close'].tail(6).iloc[0]) * factor) - 1) * 100 if len(df_x) > 5 else 0,
             "votos_tech": votos,
         }
-
     except Exception as e:
         st.error(f"[ERROR datos]: {e}")
         return None
@@ -402,8 +374,8 @@ def calcular_delta_prob(precio, strike, vix, dias_exp=1):
 # JOURNAL
 # ================================================================
 def inicializar_journal():
-    if "journal"          not in st.session_state: st.session_state.journal          = []
-    if "analisis_activo"  not in st.session_state: st.session_state.analisis_activo  = False
+    if "journal"         not in st.session_state: st.session_state.journal         = []
+    if "analisis_activo" not in st.session_state: st.session_state.analisis_activo = False
 
 def guardar_en_journal(entrada):
     st.session_state.journal.append(entrada)
@@ -441,8 +413,7 @@ def formulario_resultado_journal():
                 st.success("✅ Resultado guardado")
 
 # ================================================================
-# EJECUTAR ANÁLISIS — función separada para llamarla desde
-# el botón Y desde el auto-refresh sin duplicar código
+# EJECUTAR ANÁLISIS
 # ================================================================
 def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     MAX_LOSS_DIA = -300.0
@@ -546,14 +517,14 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     lotes_base = max(1, int((cap / 25000) * 10))
     motivo_bloqueo = ""
 
-    if vix_extremo:        motivo_bloqueo = "VIX Extremo (>35)";                          lotes = 0
-    elif vvix_extremo:     motivo_bloqueo = "VVIX Extremo (>100)";                        lotes = 0
-    elif backwardation:    motivo_bloqueo = "Backwardation VIX/VIX3M";                    lotes = 0
-    elif ts_tension:       motivo_bloqueo = f"Term Structure tensión ({d['ts_slope']:.2f})"; lotes = 0
-    elif d["vix_speed"] > 3.5: motivo_bloqueo = f"Velocidad VIX ({d['vix_speed']:.1f}%)"; lotes = 0
-    elif ventana_evitar:   motivo_bloqueo = f"Ventana peligrosa — {ventana_desc}";        lotes = 0
-    elif noticias["bloqueo"]: motivo_bloqueo = f"Noticias: {', '.join(noticias['eventos'])}"; lotes = 0
-    elif pnl_dia <= MAX_LOSS_DIA: motivo_bloqueo = f"Límite pérdida diaria ({pnl_dia}€)"; lotes = 0
+    if vix_extremo:            motivo_bloqueo = "VIX Extremo (>35)";                             lotes = 0
+    elif vvix_extremo:         motivo_bloqueo = "VVIX Extremo (>100)";                           lotes = 0
+    elif backwardation:        motivo_bloqueo = "Backwardation VIX/VIX3M";                       lotes = 0
+    elif ts_tension:           motivo_bloqueo = f"Term Structure tensión ({d['ts_slope']:.2f})"; lotes = 0
+    elif d["vix_speed"] > 3.5: motivo_bloqueo = f"Velocidad VIX ({d['vix_speed']:.1f}%)";       lotes = 0
+    elif ventana_evitar:       motivo_bloqueo = f"Ventana peligrosa — {ventana_desc}";           lotes = 0
+    elif noticias["bloqueo"]:  motivo_bloqueo = f"Noticias: {', '.join(noticias['eventos'])}";  lotes = 0
+    elif pnl_dia <= MAX_LOSS_DIA: motivo_bloqueo = f"Límite pérdida diaria ({pnl_dia}€)";       lotes = 0
     else:
         lotes = int(lotes_base * 1.5) if d["vix"] < 18 else (lotes_base if d["vix"] < 25 else lotes_base // 2)
         if prima_barata:        lotes = max(1, lotes - 1)
@@ -562,16 +533,39 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
         if hv_iv_peligroso:     lotes = max(1, lotes - 1)
         if d["divergencia_qqq"] and not iron_condor: lotes = max(1, lotes - 1)
 
+    # Texto final de la decisión
+    if lotes > 0:
+        estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+    else:
+        estrategia_txt = None
+        motivo_display = motivo_bloqueo if motivo_bloqueo else "Condiciones de riesgo detectadas"
+
     # ══════════════════════════════════════════════════════════════
     # DISPLAY
     # ══════════════════════════════════════════════════════════════
     st.header(f"Dashboard | {ahora.strftime('%H:%M:%S')}")
 
+    # 1️⃣ Ventana horaria
     if   ventana == "ÓPTIMA": st.success(f"{ventana_icon} **{ventana}** — {ventana_desc}")
     elif ventana == "EVITAR": st.error(  f"{ventana_icon} **{ventana}** — {ventana_desc}")
     else:                     st.info(   f"{ventana_icon} **{ventana}** — {ventana_desc}")
 
-    # Fila 1 — Precio
+    # ✅ 2️⃣ RESULTADO AQUÍ — visible sin hacer scroll
+    st.divider()
+    if lotes > 0:
+        st.success(
+            f"🔥 **{estrategia_txt}** | "
+            f"VENDER: **{vender}** | "
+            f"LOTES: **{lotes}** | "
+            f"PROB ITM: {prob_itm*100:.1f}% | "
+            f"DIST: {distancia_seguridad:.1f} pts | "
+            f"VIX usado: {vix_para_dist:.1f}"
+        )
+    else:
+        st.error(f"🚫 **NO OPERAR** — {motivo_display}")
+    st.divider()
+
+    # 3️⃣ Métricas detalladas
     st.subheader("📈 Precio y Volatilidad")
     c1,c2,c3,c4,c5 = st.columns(5)
     c1.metric("XSP Precio",  f"{d['actual']:.2f}")
@@ -580,7 +574,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     c4.metric("VIX1D",       f"{d['vix1d']:.2f}",      f"x{d['vix1d_ratio']:.2f} 🔴" if vix1d_spike else f"x{d['vix1d_ratio']:.2f} ✅")
     c5.metric("Z-Score",     f"{d['z_score']:.2f}")
 
-    # Fila 2 — Volatilidad
     st.subheader("🌡️ Estructura de Volatilidad")
     c6,c7,c8,c9,c10 = st.columns(5)
     c6.metric("IV Rank",      f"{d['ivr']:.1f}%",      "Rica ✅" if d['ivr'] >= 50 else "Barata ⚠️")
@@ -589,7 +582,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     c9.metric("TS Slope",     f"{d['ts_slope']:.3f}",  "Tensión 🔴" if ts_tension else ("Alerta ⚠️" if d['ts_slope'] > 0.85 else "Contango ✅"))
     c10.metric("Bollinger %B",f"{d['pct_b']:.2f}",     "Sobreext ⚠️" if (sobreextendido_arr or sobreextendido_abj) else "Normal ✅")
 
-    # Fila 3 — Flujo
     st.subheader("📡 Flujo de Mercado")
     c11,c12,c13,c14,c15 = st.columns(5)
     c11.metric("QQQ Ret",   f"{d['qqq_ret']:+.2f}%",  "Alcista ✅" if d['qqq_alcista'] else "Bajista 🔴")
@@ -599,7 +591,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     c14.metric("Amplitud",  "Confirmada ✅" if d['amplitud_ok'] else "Falso ⚠️")
     c15.metric("TNX Cambio",f"{d['tnx_cambio']:+.2f}%","Presión 🔴" if tnx_presion_bajista else "Normal ✅")
 
-    # Fila 4 — Gamma
     st.subheader("⚡ Niveles Gamma")
     c16,c17,c18,c19,c20 = st.columns(5)
     cw_txt = f"{g['call_wall']:.1f} {'🔴' if call_wall_confirmado else ''}" if g['call_wall'] else "N/A"
@@ -612,7 +603,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
                f"Sesgo {sesgo_max_pain}")
     c20.metric("Expected Move",f"±{g['expected_move']:.1f} pts" if g['expected_move'] else "N/A")
 
-    # Fila 5 — Operativa
     st.subheader("🎯 Operativa")
     c21,c22,c23,c24,c25 = st.columns(5)
     c21.metric("GEX Neto",  f"{g['gex_neto']:,.0f}", "Anclaje ✅" if g['gex_positivo'] else "Volátil 🔴")
@@ -621,13 +611,11 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     c24.metric("Distancia", f"{distancia_seguridad:.1f} pts")
     c25.metric("Prob ITM",  f"{prob_itm*100:.1f}%")
 
-    # Opening Range
     st.info(
         f"📊 OR: {d['or_low']:.2f} — {d['or_high']:.2f} | "
         f"Precio {'DENTRO ⚠️ (indecisión)' if precio_en_or else 'FUERA ✅ (hay dirección)'}"
     )
 
-    # Strikes redondos
     with st.expander("📐 Strikes redondos clave"):
         df_niv = pd.DataFrame(niveles_redondos[:12])
         df_niv['Call Wall'] = df_niv['strike'].apply(lambda s: "✅" if g['call_wall'] and abs(s - g['call_wall']) < 2 else "")
@@ -644,7 +632,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if put_wall_confirmado:       st.success(f"🔴 Put Wall {g['put_wall']:.1f} = redondo — soporte DOBLEMENTE confirmado")
     if call_wall_confirmado:      st.success(f"🔴 Call Wall {g['call_wall']:.1f} = redondo — resistencia DOBLEMENTE confirmada")
     if g["en_rango_gamma"]:       st.success(f"✅ Precio en rango gamma [{g['put_wall']:.1f} — {g['call_wall']:.1f}] — Iron Condor ideal")
-    if d["divergencia_qqq"]:      st.warning(f"⚠️ QQQ ({d['qqq_ret']:+.2f}%) diverge de SPY ({d['spy_ret']:+.2f}%) — sin dirección clara")
+    if d["divergencia_qqq"]:      st.warning(f"⚠️ QQQ ({d['qqq_ret']:+.2f}%) diverge de SPY ({d['spy_ret']:+.2f}%)")
     if d["qqq_lidera"] and not d["divergencia_qqq"]: st.success("✅ QQQ lidera — apetito de riesgo real confirmado")
     if hv_iv_peligroso:           st.warning(f"⚠️ HV20/IV = {d['hv_iv']:.2f} — mercado subestima la vol")
     if hv_iv_ideal and not prima_barata: st.success(f"✅ HV20/IV = {d['hv_iv']:.2f} — prima cara, condiciones ideales")
@@ -656,13 +644,8 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if g["expected_move"]:        st.info(f"📏 Expected Move hoy: ±{g['expected_move']:.1f} pts "
                                           f"[{d['actual']-g['expected_move']:.1f} — {d['actual']+g['expected_move']:.1f}]")
 
-    # Resultado final
+    # Telegram y journal solo si hay operación
     if lotes > 0:
-        estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
-        st.success(
-            f"🔥 ESTRATEGIA: {estrategia_txt} | "
-            f"VENDER: {vender} | LOTES: {lotes} | VIX usado: {vix_para_dist:.1f}"
-        )
         guardar_en_journal({
             "hora": ahora.strftime('%H:%M'), "estrategia": estrategia_txt,
             "strike": vender, "prob_itm": f"{prob_itm*100:.1f}%",
@@ -673,7 +656,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
             "em": f"±{g['expected_move']:.1f}" if g['expected_move'] else "N/A",
             "resultado": "", "notas": "",
         })
-
         if enviar_auto:
             mp_l  = f"🔹 Max Pain: {g['max_pain']:.1f} (sesgo {sesgo_max_pain})\n" if g['max_pain'] else ""
             gf_l  = f"🔹 Gamma Flip: {g['gamma_flip']:.1f} {'⚠️' if precio_bajo_flip else '✅'}\n" if g['gamma_flip'] else ""
@@ -699,9 +681,6 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
                 f"Ventana: {ventana_icon} {ventana}"
             )
             enviar_telegram(msg_tel)
-    else:
-        st.error(f"🚫 NO OPERAR: {motivo_bloqueo if motivo_bloqueo else 'Condiciones de riesgo detectadas'}")
-
 
 # ================================================================
 # MAIN
@@ -710,46 +689,35 @@ def main():
     st.title("🛡️ XSP 0DTE Institutional v10.0")
     inicializar_journal()
 
-    # ── Sidebar ───────────────────────────────────────────────────
     cap         = st.sidebar.number_input("Capital Cuenta (€)", value=25000.0)
     pnl_dia     = st.sidebar.number_input("P&L del día (€)",    value=250.0)
     enviar_auto = st.sidebar.checkbox("Enviar Telegram automáticamente", value=False)
 
-    # Auto-refresh
     if AUTOREFRESH_DISPONIBLE:
         refresh_min = st.sidebar.selectbox("Auto-refresh cada", [0, 2, 5, 10], index=2)
         if refresh_min > 0:
             st_autorefresh(interval=refresh_min * 60 * 1000, key="autorefresh")
             st.sidebar.info(f"🔄 Refresh cada {refresh_min} min")
     else:
-        st.sidebar.warning("💡 pip install streamlit-autorefresh para activar auto-refresh")
+        st.sidebar.warning("💡 pip install streamlit-autorefresh para auto-refresh")
 
-    # Estado del auto-análisis visible en sidebar
     if st.session_state.analisis_activo:
         st.sidebar.success("🟢 Auto-análisis ACTIVO")
     else:
         st.sidebar.info("⚪ Auto-análisis INACTIVO")
 
-    # Tabs
     tab_dashboard, tab_journal = st.tabs(["📊 Dashboard", "📓 Journal"])
 
     with tab_dashboard:
-
-        # ── Botones de control ────────────────────────────────────
         col_btn1, col_btn2 = st.columns(2)
         with col_btn1:
             if st.button("▶️ EJECUTAR ANÁLISIS", use_container_width=True):
-                # Primera vez o re-activación manual
                 st.session_state.analisis_activo = True
-
         with col_btn2:
             if st.button("⏹️ DETENER AUTO-ANÁLISIS", use_container_width=True):
                 st.session_state.analisis_activo = False
-                st.info("Auto-análisis detenido. Pulsa EJECUTAR para reactivar.")
+                st.info("Auto-análisis detenido.")
 
-        # ── Ejecutar si está activo ───────────────────────────────
-        # Esto corre tanto cuando el usuario pulsa el botón
-        # como en cada auto-refresh mientras esté activo
         if st.session_state.analisis_activo:
             ejecutar_analisis(cap, pnl_dia, enviar_auto)
 
