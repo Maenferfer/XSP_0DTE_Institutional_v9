@@ -427,4 +427,58 @@ def main():
             col6, col7, col8, col9, col10 = st.columns(5)
             col6.metric("IV Rank",     f"{d['ivr']:.1f}%",   "Prima rica ✅" if d['ivr'] >= 50 else "Prima barata ⚠️")
             col7.metric("VVIX",        f"{d['vvix']:.1f}",   "Peligro 🔴" if vvix_extremo else "Normal ✅")
-            col8.metric("TS Slope",    f"{d['ts_slope']:.3f}","Tensión 🔴" if ts_tension else ("Alerta
+            col8.metric("TS Slope",    f"{d['ts_slope']:.3f}","Tensión 🔴" if ts_tension else ("Alerta ⚠️" if d['ts_slope'] > 0.85 else "Contango ✅"))
+            col9.metric("Bollinger %B",f"{d['pct_b']:.2f}",  "Sobreextendido ⚠️" if (sobreextendido_arr or sobreextendido_abj) else "Normal ✅")
+            col10.metric("TNX Cambio", f"{d['tnx_cambio']:+.2f}%", "Presión bajista ⚠️" if tnx_presion_bajista else "Normal ✅")
+
+            # Fila 3 — Operativa
+            col11, col12, col13, col14, col15 = st.columns(5)
+            col11.metric("Gap %",         f"{d['gap_pct']:.2f}%")
+            col12.metric("Streak",        f"{d['streak']} días")
+            col13.metric("Amplitud",      "Confirmada ✅" if d['amplitud_ok'] else "Rally falso ⚠️")
+            col14.metric("Distancia",     f"{distancia_seguridad:.1f} pts")
+            col15.metric("Prob ITM",      f"{prob_itm*100:.1f}%")
+
+            # Opening Range
+            st.info(
+                f"📊 Opening Range: {d['or_low']:.2f} — {d['or_high']:.2f} | "
+                f"Precio {'DENTRO ⚠️ (indecisión)' if precio_en_or else 'FUERA ✅ (hay dirección)'}"
+            )
+
+            # Alertas adicionales
+            if noticias["eventos"]:
+                st.warning(f"📅 Noticias hoy: {', '.join(noticias['eventos'])}")
+            if prima_barata and lotes > 0:
+                st.warning(f"⚠️ IVR bajo ({d['ivr']:.1f}%) — prima barata, lotes reducidos a {lotes}")
+            if vix1d_spike and lotes > 0:
+                st.warning(f"⚠️ VIX1D spike (ratio {d['vix1d_ratio']:.2f}) — volatilidad intradía alta, lotes reducidos a {lotes}")
+            if rally_falso:
+                st.warning("⚠️ Rally falso detectado — SPY sube pero RSP no confirma amplitud")
+
+            # Resultado final
+            if lotes > 0:
+                estrategia_txt = "IRON CONDOR" if iron_condor else ("BULL PUT" if bias else "BEAR CALL")
+                st.success(f"🔥 ESTRATEGIA: {estrategia_txt} | VENDER: {vender} | LOTES: {lotes} | VIX usado: {vix_para_dist:.1f}")
+
+                if enviar_auto:
+                    msg_tel = (
+                        f"🚀 XSP v9.0 — {estrategia_txt}\n"
+                        f"🔹 VENDER: {vender}\n"
+                        f"🔹 PROB ITM: {prob_itm*100:.1f}%\n"
+                        f"🔹 DISTANCIA: {distancia_seguridad:.1f} pts\n"
+                        f"🔹 LOTES: {lotes}\n"
+                        f"─────────────────\n"
+                        f"🔹 VIX: {d['vix']:.1f} | VIX1D: {d['vix1d']:.1f} (ratio {d['vix1d_ratio']:.2f})\n"
+                        f"🔹 VVIX: {d['vvix']:.1f} | TS Slope: {d['ts_slope']:.3f}\n"
+                        f"🔹 IVR: {d['ivr']:.1f}% | %B: {d['pct_b']:.2f}\n"
+                        f"🔹 Z-Score: {d['z_score']:.2f} | TNX: {d['tnx_cambio']:+.2f}%\n"
+                        f"🔹 Amplitud: {'✅' if d['amplitud_ok'] else '⚠️ Rally falso'}\n"
+                        f"🔹 Ventana: {ventana_icon} {ventana}"
+                    )
+                    enviar_telegram(msg_tel)
+            else:
+                motivo_display = motivo_bloqueo if motivo_bloqueo else "Condiciones de riesgo detectadas"
+                st.error(f"🚫 NO OPERAR: {motivo_display}")
+
+if __name__ == "__main__":
+    main()
