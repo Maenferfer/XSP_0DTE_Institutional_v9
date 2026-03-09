@@ -528,7 +528,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     dist_base = max(
         d["atr14"] * 0.90,
         d["actual"] * ((vix_para_dist / 100) / (252**0.5)) *
-        (0.85 if d["vix"] < 15 else (1.05 if d["vix"] < 22 else 1.35))
+        (0.85 if d["vix"] < 15 else (1.05 if d["vix"] < 22 else 1.60))
     )
     if g["expected_move"]:
         dist_base = max(dist_base, g["expected_move"] * 0.9)
