@@ -554,16 +554,38 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     else:                     st.info(   f"{ventana_icon} **{ventana}** — {ventana_desc}")
 
     # 2️⃣ RESULTADO — visible sin scroll
+    # Ala dinámica: 40% de la distancia al strike corto, mínimo 3 pts, máximo 20 pts
+    # Escala automáticamente con VIX y ATR — más vol = más distancia = ala más ancha
+    ala = max(3, min(20, round(dist_base * 0.40)))
     st.divider()
     if lotes > 0:
-        st.success(
-            f"🔥 **{estrategia_txt}** | "
-            f"VENDER: **{vender}** | "
-            f"LOTES: **{lotes}** | "
-            f"PROB ITM: {prob_itm*100:.1f}% | "
-            f"DIST: {distancia_seguridad:.1f} pts | "
-            f"VIX usado: {vix_para_dist:.1f}"
-        )
+        if estrategia_txt == "IRON CONDOR":
+            vender_put  = round(d["actual"] - dist_base)
+            vender_call = round(d["actual"] + dist_base)
+            vender_put,  _ = ajustar_strike_redondo(vender_put,  True)
+            vender_call, _ = ajustar_strike_redondo(vender_call, False)
+            comprar_put  = vender_put  - ala
+            comprar_call = vender_call + ala
+            prob_put  = calcular_delta_prob(d["actual"], vender_put,  vix_para_dist)
+            prob_call = calcular_delta_prob(d["actual"], vender_call, vix_para_dist)
+            st.success(
+                f"🔥 **IRON CONDOR** | "
+                f"VENDER PUT {vender_put} / COMPRAR PUT {comprar_put} | "
+                f"VENDER CALL {vender_call} / COMPRAR CALL {comprar_call} | "
+                f"Prob ITM PUT: {prob_put*100:.1f}% — CALL: {prob_call*100:.1f}% | "
+                f"Dist: ±{distancia_seguridad:.1f} pts | Ala: {ala} pts | "
+                f"LOTES: **{lotes}** | VIX usado: {vix_para_dist:.1f}"
+            )
+        else:
+            comprar = vender - ala if estrategia_txt == "BULL PUT" else vender + ala
+            st.success(
+                f"🔥 **{estrategia_txt}** | "
+                f"VENDER: **{vender}** / COMPRAR: **{comprar}** | "
+                f"LOTES: **{lotes}** | "
+                f"PROB ITM: {prob_itm*100:.1f}% | "
+                f"DIST: {distancia_seguridad:.1f} pts | Ala: {ala} pts | "
+                f"VIX usado: {vix_para_dist:.1f}"
+            )
     else:
         st.error(f"🚫 **NO OPERAR** — {motivo_display}")
         vender_teorico     = round(d["actual"] - dist_base) if bias_teorico else round(d["actual"] + dist_base)
@@ -576,21 +598,25 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
             vender_call_teo = round(d["actual"] + dist_base)
             vender_put_teo,  _ = ajustar_strike_redondo(vender_put_teo,  True)
             vender_call_teo, _ = ajustar_strike_redondo(vender_call_teo, False)
+            comprar_put_teo  = vender_put_teo  - ala
+            comprar_call_teo = vender_call_teo + ala
             prob_put_teo  = calcular_delta_prob(d["actual"], vender_put_teo,  vix_para_dist)
             prob_call_teo = calcular_delta_prob(d["actual"], vender_call_teo, vix_para_dist)
             st.caption(
                 f"* Si se operara ahora: **{señal_teorica}** | "
-                f"PUT: **{vender_put_teo}** (ITM {prob_put_teo*100:.1f}%) | "
-                f"CALL: **{vender_call_teo}** (ITM {prob_call_teo*100:.1f}%) | "
-                f"Dist: ±{dist_teorica:.1f} pts | "
+                f"VENDER PUT {vender_put_teo} / COMPRAR PUT {comprar_put_teo} | "
+                f"VENDER CALL {vender_call_teo} / COMPRAR CALL {comprar_call_teo} | "
+                f"Prob ITM PUT: {prob_put_teo*100:.1f}% — CALL: {prob_call_teo*100:.1f}% | "
+                f"Dist: ±{dist_teorica:.1f} pts | Ala: {ala} pts | "
                 f"Lotes: **{lotes_teoricos}** — ⚠️ el riesgo no justifica la operación"
             )
         else:
+            comprar_teo = vender_teorico - ala if señal_teorica == "BULL PUT" else vender_teorico + ala
             st.caption(
                 f"* Si se operara ahora: **{señal_teorica}** | "
-                f"Strike: **{vender_teorico}** | "
+                f"VENDER {vender_teorico} / COMPRAR {comprar_teo} | "
                 f"Prob ITM: {prob_teorica*100:.1f}% | "
-                f"Dist: {dist_teorica:.1f} pts | "
+                f"Dist: {dist_teorica:.1f} pts | Ala: {ala} pts | "
                 f"Lotes: **{lotes_teoricos}** — ⚠️ el riesgo no justifica la operación"
             )
     st.divider()
