@@ -415,7 +415,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     backwardation       = d["vix"] > d["vix3m"]
     vix_peligro_leve    = d["vix"] > d["vix9d"]
     vix_peligro_bloqueo = d["vix"] > d["vix9d"] and d["vix"] > 25
-    vvix_extremo        = d["vvix"] > 120
+    vvix_extremo        = d["vvix"] > 115
     vix1d_spike         = d["vix1d_ratio"] > 1.35
     ts_tension          = d["ts_slope"] > 0.93
     ts_critico          = d["ts_slope"] > 0.97
@@ -509,7 +509,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if vix_extremo:
         motivo_bloqueo = "VIX Extremo (>35)";                                lotes = 0
     elif vvix_extremo:
-        motivo_bloqueo = "VVIX Extremo (>120)";                              lotes = 0
+        motivo_bloqueo = "VVIX Extremo (>115)";                              lotes = 0
     elif backwardation:
         motivo_bloqueo = "Backwardation VIX/VIX3M";                          lotes = 0
     elif ts_critico:
@@ -696,7 +696,7 @@ def ejecutar_analisis(cap, pnl_dia, enviar_auto):
     if prima_barata:              st.warning(f"⚠️ IVR bajo ({d['ivr']:.1f}%) — prima barata, lotes reducidos")
     if vix1d_spike:               st.warning(f"⚠️ VIX1D spike (x{d['vix1d_ratio']:.2f} > 1.35) — lotes reducidos")
     if d['vvix'] > 100 and not vvix_extremo: st.warning(f"⚠️ VVIX elevado ({d['vvix']:.1f}) — atención")
-    if vvix_extremo:              st.error(f"🔴 VVIX Extremo ({d['vvix']:.1f} > 120) — bloqueo total")
+    if vvix_extremo:              st.error(f"🔴 VVIX Extremo ({d['vvix']:.1f} > 115) — bloqueo total")
     if gex_negativo:              st.warning("⚠️ GEX negativo — MM cubriendo, lotes reducidos")
     if precio_bajo_flip:          st.warning(f"⚠️ Precio bajo Gamma Flip ({g['gamma_flip']:.1f}) — zona bajista")
     if rally_falso:               st.warning("⚠️ Rally falso — SPY sube pero RSP no confirma")
